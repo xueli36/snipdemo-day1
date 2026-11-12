@@ -2,7 +2,6 @@
 
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
@@ -117,32 +116,21 @@ test('network errors are reported and return exit code 1', async () => {
   assert.match(unavailable.stderr, /Cannot reach Snip API/);
 });
 
-test('open follows the redirect manually and launches the platform browser', async (t) => {
-  if (os.platform() === 'win32') {
-    t.skip('Windows browser launching is verified through the platform command selection test.');
-    return;
+test('open manually handles redirects and passes the target to the browser launcher', async () => {
+  const previousApi = process.env.SNIP_API;
+  process.env.SNIP_API = apiBase;
+  delete require.cache[require.resolve('../cli')];
+  const { open } = require('../cli');
+  let launchedUrl;
+  try {
+    await open('a1B2c3', (url) => {
+      launchedUrl = url;
+    });
+  } finally {
+    if (previousApi === undefined) delete process.env.SNIP_API;
+    else process.env.SNIP_API = previousApi;
   }
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'snip-browser-'));
-  const argsFile = path.join(directory, 'args.json');
-  const command = os.platform() === 'darwin' ? 'open' : 'xdg-open';
-  const shim = path.join(directory, command);
-  fs.writeFileSync(
-    shim,
-    '#!/bin/sh\nprintf "%s" "$1" > "$SNIP_BROWSER_ARGS_FILE"\n',
-  );
-  fs.chmodSync(shim, 0o755);
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-
-  const result = await runCli(['open', 'a1B2c3'], {
-    PATH: `${directory}${path.delimiter}${process.env.PATH}`,
-    SNIP_BROWSER_ARGS_FILE: argsFile,
-  });
-  assert.equal(result.code, 0, result.stderr);
-
-  for (let attempt = 0; attempt < 50 && !fs.existsSync(argsFile); attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  assert.equal(fs.readFileSync(argsFile, 'utf8'), 'https://example.test/original?x=1');
+  assert.equal(launchedUrl, 'https://example.test/original?x=1');
 });
 
 test('browser commands are selected for Windows, macOS, and Linux', () => {

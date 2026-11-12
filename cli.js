@@ -125,7 +125,7 @@ function launchBrowser(url) {
   child.unref();
 }
 
-async function open(code) {
+async function open(code, browserLauncher = launchBrowser) {
   const response = await request(`/${encodeURIComponent(code)}`, { redirect: 'manual' });
   if (response.status < 300 || response.status >= 400) {
     if (response.status === 404) {
@@ -146,7 +146,7 @@ async function open(code) {
   if (target.protocol !== 'http:' && target.protocol !== 'https:') {
     throw new Error('API returned an unsupported redirect URL.');
   }
-  launchBrowser(target.href);
+  browserLauncher(target.href);
 }
 
 async function main(args) {
@@ -180,4 +180,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { browserLaunch, main, validateHttpUrl };
+module.exports = { browserLaunch, main, open, validateHttpUrl };
