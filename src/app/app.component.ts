@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, OnInit, signal, ChangeDetectionStrategy } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { LinkApiService, ShortLink } from './link-api.service';
@@ -8,6 +8,7 @@ import { LinkApiService, ShortLink } from './link-api.service';
   selector: 'app-root',
   imports: [ReactiveFormsModule],
   templateUrl: './app.component.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './app.component.css'
 })
 export class AppComponent implements OnInit {
