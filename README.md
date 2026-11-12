@@ -12,7 +12,7 @@ branches as Git submodules:
 | Branch | Path | Contents |
 | --- | --- | --- |
 | `backend` | `backend/` | Bun API server |
-| `frontend` | `frontend/` | Angular 19 web app |
+| `frontend` | `frontend/` | Angular 22 web app |
 | `cli` | `cli/` | CommonJS Node.js CLI |
 | `bundle` | `bundle/` | Generated release: API, web UI, and CLI |
 | `main` | repository root | Submodules, build script, and CI |
