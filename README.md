@@ -74,4 +74,6 @@ node scripts/build-bundle.mjs --push
 ```
 
 The bundle is generated output; make changes in the component branches rather
-than editing files in `bundle/` by hand.
+than editing files in `bundle/` by hand. Docker CI audits frontend dependencies,
+tests the CLI and built app, scans the image, and publishes only if all checks
+pass.

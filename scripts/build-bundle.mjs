@@ -108,7 +108,6 @@ async function main() {
   await ensureFrontendIsClean();
 
   run("npm", ["install"], frontendDir);
-  run("npm", ["audit", "--audit-level=high"], frontendDir);
   await ensureFrontendIsClean();
   run("npx", ["ng", "build"], frontendDir);
   await assembleBundle();

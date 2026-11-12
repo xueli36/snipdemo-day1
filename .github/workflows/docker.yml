@@ -1,0 +1,186 @@
+name: Build and push image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - bundle
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source branches
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Test CLI
+        run: node --test
+        working-directory: cli
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npx ng build
+          test -f dist/snip-frontend/browser/index.html
+        working-directory: frontend
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out frontend source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Audit frontend dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high
+        working-directory: frontend
+
+  image-scan:
+    runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Check out bundle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build image locally for verification
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./bundle
+          load: true
+          tags: snip-candidate:${{ github.sha }}
+
+      - name: Scan image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: snip-candidate:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      - name: Smoke-test the bundled API, UI, and CLI
+        env:
+          IMAGE_TAG: snip-candidate:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          container="snip-smoke-${GITHUB_RUN_ID}"
+          docker run --detach --rm --name "$container" -p 3000:3000 "$IMAGE_TAG"
+          cleanup() {
+            docker stop "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/api/links >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" -eq 1
+          curl --fail --silent http://127.0.0.1:3000/ | grep -q '<app-root'
+
+          curl --fail --silent \
+            -H 'Content-Type: application/json' \
+            -d '{"url":"https://example.com"}' \
+            http://127.0.0.1:3000/api/links > "$RUNNER_TEMP/created-link.json"
+          code="$(node -p "require('$RUNNER_TEMP/created-link.json').code")"
+          test "${#code}" -eq 6
+
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "http://127.0.0.1:3000/$code")"
+          test "$status" = 302
+          curl --fail --silent http://127.0.0.1:3000/api/links > "$RUNNER_TEMP/links.json"
+          node -e "const links=require('$RUNNER_TEMP/links.json'); if (!links.some(link => link.code === '$code' && link.hits === 1)) process.exit(1)"
+          SNIP_API=http://127.0.0.1:3000 node cli/cli.js ls | grep -F "$code"
+
+      - name: Save the scanned image for the publish job
+        run: docker save --output "$RUNNER_TEMP/snip-image.tar" "snip-candidate:${GITHUB_SHA}"
+
+      - name: Upload scanned image
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: snip-scanned-image
+          path: ${{ runner.temp }}/snip-image.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs:
+      - verify
+      - dependency-audit
+      - image-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download the verified image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: snip-scanned-image
+          path: ${{ runner.temp }}
+
+      - name: Load the verified image
+        run: docker load --input "$RUNNER_TEMP/snip-image.tar"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish verified image tags
+        env:
+          IMAGE_TAGS: ${{ needs.image-scan.outputs.tags }}
+          SOURCE_TAG: snip-candidate:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$SOURCE_TAG" "$tag"
+            docker push "$tag"
+          done <<< "$IMAGE_TAGS"
