@@ -32,10 +32,4 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Rebuild and publish bundle pointers
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          AUTH_HEADER="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $AUTH_HEADER"
-          unset AUTH_HEADER GH_TOKEN
-          node scripts/build-bundle.mjs --push
+        run: node scripts/build-bundle.mjs --push
