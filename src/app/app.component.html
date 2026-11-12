@@ -1,0 +1,120 @@
+<main class="page">
+  <header class="page-header">
+    <a class="brand" href="/" aria-label="Snip home">
+      <span class="brand-mark" aria-hidden="true">s</span>
+      <span>snip</span>
+    </a>
+    <span class="header-note">Simple links. Ready to share.</span>
+  </header>
+
+  <section class="hero" aria-labelledby="page-title">
+    <p class="eyebrow">YOUR LINKS, MADE SHORT</p>
+    <h1 id="page-title">Share more with less.</h1>
+    <p class="hero-copy">Turn a long URL into a little link that goes a long way.</p>
+
+    <form class="shorten-form" [formGroup]="form" (ngSubmit)="createLink()" novalidate>
+      <label class="sr-only" for="url">Paste a URL to shorten</label>
+      <input
+        id="url"
+        type="text"
+        formControlName="url"
+        placeholder="https://your-very-long-link.com"
+        autocomplete="url"
+        inputmode="url"
+        aria-describedby="url-hint"
+        [attr.aria-invalid]="form.controls.url.invalid && form.controls.url.touched"
+      />
+      <button type="submit" [disabled]="isSubmitting()">
+        @if (isSubmitting()) {
+          <span class="spinner" aria-hidden="true"></span>
+          Shortening…
+        } @else {
+          Make it short <span aria-hidden="true">↗</span>
+        }
+      </button>
+    </form>
+    <p id="url-hint" class="form-hint">Use a complete link that starts with http:// or https://</p>
+    @if (form.controls.url.invalid && form.controls.url.touched) {
+      <p class="field-error" role="alert">
+        @if (form.controls.url.hasError('required')) {
+          Enter a URL to shorten.
+        } @else {
+          Enter a valid HTTP or HTTPS URL.
+        }
+      </p>
+    } @else if (formError()) {
+      <p class="field-error" role="alert">{{ formError() }}</p>
+    }
+
+    @if (createdLink(); as link) {
+      <div class="result-card" role="status" aria-live="polite">
+        <span class="result-icon" aria-hidden="true">✓</span>
+        <div class="result-content">
+          <span class="result-label">Your short link is ready</span>
+          <a [href]="link.shortUrl" target="_blank" rel="noopener noreferrer">{{ link.shortUrl }}</a>
+        </div>
+        <a class="result-open" [href]="link.shortUrl" target="_blank" rel="noopener noreferrer">Open</a>
+      </div>
+    }
+  </section>
+
+  <section class="links-section" aria-labelledby="links-title">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">YOUR COLLECTION</p>
+        <h2 id="links-title">Recent links</h2>
+      </div>
+      @if (links().length > 0) {
+        <span class="link-count">{{ links().length }} {{ links().length === 1 ? 'link' : 'links' }}</span>
+      }
+    </div>
+
+    @if (isLoading()) {
+      <div class="table-message" role="status">
+        <span class="spinner spinner-dark" aria-hidden="true"></span>
+        Loading your links…
+      </div>
+    } @else if (loadError()) {
+      <div class="table-message error-message" role="alert">
+        <span>{{ loadError() }}</span>
+        <button class="retry-button" type="button" (click)="refreshLinks()">Try again</button>
+      </div>
+    } @else if (links().length === 0) {
+      <div class="empty-state">
+        <span class="empty-icon" aria-hidden="true">↗</span>
+        <h3>No links yet</h3>
+        <p>Your shortened links will show up here.</p>
+      </div>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Short link</th>
+              <th scope="col">Original URL</th>
+              <th scope="col" class="hits-column">Hits</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (link of links(); track link.code) {
+              <tr>
+                <td>
+                  <a class="short-link" [href]="link.shortUrl" target="_blank" rel="noopener noreferrer">
+                    {{ link.code }}
+                  </a>
+                </td>
+                <td class="original-url" [title]="link.url">{{ link.url }}</td>
+                <td class="hits-column">{{ link.hits }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <footer class="page-footer">
+    <span>Made for links worth sharing.</span>
+    <span>Snip · {{ currentYear }}</span>
+  </footer>
+</main>
